@@ -44,6 +44,8 @@ class MotecLog(object):
 
         This must be called before adding any channel data.
         """
+        self.ld_channels = []
+
         ld_vehicle = ldVehicle(self.vehicle_id, self.vehicle_weight, self.vehicle_type, \
             self.vehicle_comment)
         ld_venue = ldVenue(self.venue_name, self.VEHICLE_PTR, ld_vehicle)
@@ -80,8 +82,8 @@ class MotecLog(object):
 
         # Channel specs
         data_len = len(log_channel.messages)
-        data_type = np.float32 if log_channel.data_type is float else np.int32
-        freq = int(log_channel.avg_frequency())
+        data_type = np.float32
+        freq = max(1, int(round(log_channel.avg_frequency())))
         shift = 0
         multiplier = 1
         scale = 1
@@ -96,9 +98,23 @@ class MotecLog(object):
             log_channel.units)
 
         # Add in the channel data
-        ld_channel._data = np.array([], data_type)
-        for msg in log_channel.messages:
-            ld_channel._data = np.append(ld_channel._data, data_type(msg.value))
+        values = np.fromiter(
+            (msg.value for msg in log_channel.messages),
+            dtype=np.float64,
+            count=data_len,
+        )
+        values = np.nan_to_num(
+            values,
+            nan=0.0,
+            posinf=np.finfo(np.float32).max,
+            neginf=np.finfo(np.float32).min,
+        )
+        values = np.clip(
+            values,
+            np.finfo(np.float32).min,
+            np.finfo(np.float32).max,
+        )
+        ld_channel._data = values.astype(np.float32, copy=False)
 
         # Add the ld channel and advance the file pointers
         self.ld_channels.append(ld_channel)

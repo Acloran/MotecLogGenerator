@@ -1,6 +1,8 @@
+.DS_Store
+.venv/
+__pycache__/
 *.pyc
-__pycache__
-
-# MoTeC logs
 *.ld
 *.ldx
+build/
+dist/

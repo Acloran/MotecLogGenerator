@@ -1,0 +1,5 @@
+cantools>=41.0.0
+libxrk>=0.11.1
+matplotlib>=3.10.0
+numpy>=2.0.0
+tkinterdnd2-universal>=1.7.3

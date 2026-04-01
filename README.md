@@ -1,57 +1,103 @@
 # MotecLogGenerator
 
-Utility for generating MoTeC .ld files that can be analyzed with [i2 Pro](https://www.motec.com.au/i2/i2overview/) from external log sources. Generated log files are "Pro Enabled", so they can be opened in either *i2 Standard* or *i2 Pro*.
+Utility for generating MoTeC `.ld` files that can be opened in [MoTeC i2 Pro](https://www.motec.com.au/i2/i2overview/) from several external log formats.
 
-Currently the following input types are supported:
-* Raw CAN bus logs (see logging instructions below)
-* CSV files
-* [COBB Accessport](https://www.cobbtuning.com/products/accessport) logs
+The app now supports:
+- Raw CAN bus logs with a matching DBC
+- Generic CSV logs
+- [COBB Accessport](https://www.cobbtuning.com/products/accessport) CSV logs
+- AIM `.xrk` and `.xrz` telemetry logs
 
-CAN bus logs must be paired with a [DBC](https://docs.openvehicles.com/en/latest/components/vehicle_dbc/docs/dbc-primer.html) file describing the structure of the frames.
+AIM support is implemented with [`libxrk`](https://github.com/m3rlin45/libxrk), a GitHub-hosted parser for AIM telemetry files.
 
-This will resample all signals from the input log to be at a fixed frequency. This is done because MoTeC expects channels to have messages at a constant frequency, while this may not always be the case for input log files. This is especially true for CAN logs from a vehicle, where some messages only get triggered by certain actions. The frequency which the data is resampled is configurable (see usage below).
+## What Changed
 
-*Tip:* To clone with the submodule included run:
+- Added a cleaner desktop GUI with clearer layout and better input flow.
+- Rebuilt the GUI around a dark, preview-first workflow with large plotting, trim/split controls, and batch metadata editing.
+- Added AIM `.xrk/.xrz` import support and conversion into MoTeC `.ld`.
+- Added drag-and-drop file intake and per-file progress/status inside the file list.
+- Made the file picker react to the selected input type so it filters for the right files automatically.
+- Hardened the parsers so missing or malformed samples are skipped more gracefully.
+- Improved conversion performance by avoiding repeated NumPy appends while writing MoTeC channels.
+- Added build files for Windows and macOS packaging with PyInstaller.
+
+## Requirements
+
+- Python 3.14 recommended
+- Tkinter
+- matplotlib
+- tkinterdnd2-universal
+- Runtime dependencies from [requirements.txt](/Users/acloran/Documents/GitHub/MotecLogGenerator/requirements.txt)
+
+Install runtime dependencies:
+
 ```bash
-git clone --recursive git@github.com:stevendaniluk/MotecLogGenerator.git
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
 ```
 
-## Usage
-Check out the examples directory for some sample log files to test the tool with.
+## Running The App
+
+Launch the GUI:
+
+```bash
+python motec_log_generator.py
+```
+
+The GUI lets you:
+- Drag and drop files or folders directly into the queue
+- Preview a selected file on a large graph that defaults to a detected speed channel
+- Crop or split a session into two exported segments
+- Batch-edit MoTeC metadata across multiple selected files
+- Track status directly on each file row instead of using a console pane
+- Provide a DBC only when CAN logs are involved
+
+## CLI Usage
 
 ### CAN Bus Logs
-```bash
-python3 motec_log_generator.py /path/to/my/data/can_data.log CAN --dbc /path/to/my/data/car.dbc
-```
 
-This will generate a motec .ld file `/path/to/my/data/can_data.ld`.
+```bash
+python motec_log_generator.py /path/to/my/data/can_data.log CAN --dbc /path/to/my/data/car.dbc
+```
 
 ### CSV Logs
+
 ```bash
-python3 motec_log_generator.py /path/to/my/data/csv_data.csv CSV
+python motec_log_generator.py /path/to/my/data/csv_data.csv CSV
 ```
 
-This will generate a motec .ld file `/path/to/my/data/csv_data.ld`.
-
-**The first column of the CSV file must be time.** Channels will not be assigned any units.
+The first column of the CSV file must be time in seconds.
 
 ### Accessport Logs
 
 ```bash
-python3 motec_log_generator.py /path/to/my/data/accessport_data.csv ACCESSPORT
+python motec_log_generator.py /path/to/my/data/accessport_data.csv ACCESSPORT
 ```
 
-This will generate a motec .ld file `/path/to/my/data/accessport_data.ld`.
+### AIM XRK/XRZ Logs
 
-### Additional Options
-A different destination and filename for the generated .ld file can also be specified by adding the following to the command:
 ```bash
---output /path/to/different/location/new_filename.ld
+python motec_log_generator.py /path/to/my/data/session.xrk AIM
 ```
 
-It is also possible to provide additional arguments to populate the metadata in the motec log file for driver, venue, vehicle, etc. See the usage below for full details.
+### Optional Output Path
 
+Single-file mode:
+
+```bash
+python motec_log_generator.py /path/to/log.csv CSV --output /path/to/output/custom_name.ld
 ```
+
+Directory mode:
+
+```bash
+python motec_log_generator.py /path/to/log_folder CSV --output /path/to/output_folder
+```
+
+### Metadata Options
+
+```text
 usage: motec_log_generator.py [-h] [--output OUTPUT] [--frequency FREQUENCY]
                               [--dbc DBC] [--driver DRIVER]
                               [--vehicle_id VEHICLE_ID]
@@ -63,83 +109,59 @@ usage: motec_log_generator.py [-h] [--output OUTPUT] [--frequency FREQUENCY]
                               [--event_session EVENT_SESSION]
                               [--long_comment LONG_COMMENT]
                               [--short_comment SHORT_COMMENT]
-                              log {CAN,CSV,ACCESSPORT}
-
-Generates MoTeC .ld files from external log files generated by: CAN bus dumps,
-CSV files, or COBB Accessport CSV files
-
-positional arguments:
-  log                   Path to logfile
-  {CAN,CSV,ACCESSPORT}  Type of log to process
-
-options:
-  -h, --help            show this help message and exit
-  --output OUTPUT       Name of output file, defaults to same as 'candump'
-  --frequency FREQUENCY
-                        Fixed frequency to resample all channels at
-  --dbc DBC             Path to DBC file, required if log type CAN
-  --driver DRIVER       Motec log metadata field
-  --vehicle_id VEHICLE_ID
-                        Motec log metadata field
-  --vehicle_weight VEHICLE_WEIGHT
-                        Motec log metadata field
-  --vehicle_type VEHICLE_TYPE
-                        Motec log metadata field
-  --vehicle_comment VEHICLE_COMMENT
-                        Motec log metadata field
-  --venue_name VENUE_NAME
-                        Motec log metadata field
-  --event_name EVENT_NAME
-                        Motec log metadata field
-  --event_session EVENT_SESSION
-                        Motec log metadata field
-  --long_comment LONG_COMMENT
-                        Motec log metadata field
-  --short_comment SHORT_COMMENT
-                        Motec log metadata field
-
-The CAN bus log must be the same format as what is generated by 'candump' with
-the '-l' option from the linux package can-utils. A MoTeC channel will be
-created for every signal in the DBC file that has messages in the CAN log. The
-signal name and units will be directly copied from the DBC file. CSV files
-must have time as their first column. A MoTeC channel will be generated for
-all remaining columns. All channels will not have any units assigned. COBB
-Accessport CSV logs are simply generated by starting a logging session on the
-accessport. A MoTeC channel will be created for every channel logged, the name
-and units will be directly copied over.
+                              log {CAN,CSV,ACCESSPORT,AIM}
 ```
 
-## Generating CAN Logs
+If an AIM file contains session metadata, the converter will use it as a fallback when the equivalent MoTeC fields are left blank.
 
-On a linux machine connected to the CAN bus you can run:
-```bash
-candump can0 -l > my_candump.log
-```
+## Building Desktop Artifacts
 
-It will generate a log file formatted like below:
-```
-(1630268615.800257) can0 0D4#0000000000000000
-(1630268615.801277) can0 152#E9BC00000000008C
-(1630268615.802316) can0 380#150A00000000001F
-(1630268615.807716) can0 140#0082C34300000981
-(1630268615.808638) can0 141#6A263B27C4C32103
-...
-```
+Build dependencies live in [requirements-build.txt](/Users/acloran/Documents/GitHub/MotecLogGenerator/requirements-build.txt).
 
-## CAN Utilities
-Under the `can_utils` directory there are some tools for:
-* Inspecting the CAN Id's contained in a log file
-* Inspecting the messages from a particular Id in a CAN log
-* Generating a DBC file with signals for individual bytes from every Id present
+A dedicated build guide is also available in [BUILDING.md](/Users/acloran/Documents/GitHub/MotecLogGenerator/BUILDING.md).
 
-## Dependencies
-* Python 3
-* [cantools](https://cantools.readthedocs.io)
-* [numpy](https://numpy.org/)
+Install them:
 
 ```bash
-pip install cantools numpy
+python -m pip install -r requirements-build.txt
 ```
+
+Build with the included PyInstaller spec file [motec_log_generator.spec](/Users/acloran/Documents/GitHub/MotecLogGenerator/motec_log_generator.spec):
+
+```bash
+pyinstaller --noconfirm --clean motec_log_generator.spec
+```
+
+Expected outputs:
+- Windows: `dist/MotecLogGenerator.exe`
+- macOS: `dist/MotecLogGenerator.app`
+
+The spec file explicitly bundles the native `libxrk` pieces needed for AIM file support.
+
+## GitHub Actions Build
+
+The workflow [build-binaries.yml](/Users/acloran/Documents/GitHub/MotecLogGenerator/.github/workflows/build-binaries.yml) builds release artifacts on both platforms:
+- Windows artifact: `MotecLogGenerator-windows`
+- macOS artifact: `MotecLogGenerator-macos`
+
+You can trigger it manually from the Actions tab with `workflow_dispatch`, or let it run on pushes and pull requests.
+
+## macOS Deployment Notes
+
+For local use, the generated `.app` is enough. If you want to distribute it outside your own machine, you will usually also want to:
+- Code-sign the app bundle
+- Notarize it with Apple
+
+The spec file supports passing an `APPLE_CODESIGN_IDENTITY` environment variable if you want PyInstaller to sign during the build.
+
+## Windows Deployment Notes
+
+The generated `.exe` is intended as a standalone deliverable. If Windows SmartScreen is a concern for distribution, signing the executable with a code-signing certificate is still recommended.
+
+## Examples
+
+Sample input files live in [examples](/Users/acloran/Documents/GitHub/MotecLogGenerator/examples).
 
 ## Disclaimer
-This work was produced for research purposes. It should in no way be used to circumvent MoTeC's licensing requirements for their data loggers or i2 analysis software.
+
+This work was produced for research purposes. It should not be used to circumvent MoTeC licensing requirements for their data loggers or i2 software.
