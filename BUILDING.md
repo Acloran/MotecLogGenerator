@@ -1,6 +1,7 @@
 # Building MotecLogGenerator
 
 This project can be packaged for both macOS and Windows with PyInstaller.
+The primary desktop target is now the PySide6 app.
 
 ## Quick Start
 
@@ -20,7 +21,7 @@ python -m pip install -r requirements-build.txt
 Build the desktop application:
 
 ```bash
-pyinstaller --noconfirm --clean motec_log_generator.spec
+pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 ```
 
 Artifacts are written to `dist/`.
@@ -38,13 +39,13 @@ python -m pip install -r requirements-build.txt
 ### 2. Build the app bundle
 
 ```bash
-PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-config pyinstaller --noconfirm --clean motec_log_generator.spec
+PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-config pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 ```
 
 Expected outputs:
 
-- `dist/MotecLogGenerator.app`
-- `dist/MotecLogGenerator/`
+- `dist/MotecLogGeneratorQt.app`
+- `dist/MotecLogGeneratorQt/`
 
 The `.app` bundle is the main macOS deliverable.
 
@@ -54,7 +55,7 @@ If you have an Apple signing identity, you can pass it into the build:
 
 ```bash
 export APPLE_CODESIGN_IDENTITY="Developer ID Application: Your Name Here"
-PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-config pyinstaller --noconfirm --clean motec_log_generator.spec
+PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-config pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 ```
 
 For broader distribution outside your own machine, Apple notarization is also recommended after signing.
@@ -81,12 +82,12 @@ python -m pip install -r requirements-build.txt
 ### 3. Build
 
 ```powershell
-pyinstaller --noconfirm --clean motec_log_generator.spec
+pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 ```
 
 Expected outputs:
 
-- `dist\MotecLogGenerator.exe`
+- `dist\MotecLogGeneratorQt.exe`
 
 If SmartScreen reputation matters for your distribution, signing the `.exe` is recommended.
 
@@ -98,30 +99,22 @@ The repository includes a workflow:
 
 It builds:
 
-- `MotecLogGenerator.app` on macOS
-- `MotecLogGenerator.exe` on Windows
+- `MotecLogGeneratorQt.app` on macOS
+- `MotecLogGeneratorQt.exe` on Windows
 
 You can run it from the Actions tab or on push/PR events depending on your workflow settings.
 
 ## Notes About Dependencies
 
-The GUI now depends on:
+The Qt app depends on:
 
-- `matplotlib` for the large preview graph
-- `tkinterdnd2-universal` for drag and drop
+- `PySide6` for the desktop interface
 - `libxrk` for AIM XRK/XRZ import
+- `numpy` and related runtime dependencies used by the converter backend
 
-The PyInstaller spec already collects the extra `tkinterdnd2` runtime files and the `libxrk` native pieces needed by the packaged app.
+The Qt PyInstaller spec already collects the `libxrk` native pieces needed by the packaged app and bundles the platform icon assets for macOS and Windows.
 
 ## Troubleshooting
-
-### Tk / drag-and-drop issues on macOS
-
-If drag and drop does not initialize correctly, make sure the environment uses:
-
-- `tkinterdnd2-universal`
-
-and not an older `tkinterdnd2` wheel with an incompatible `tkdnd` binary.
 
 ### PyInstaller cache permission issues on macOS
 
@@ -131,6 +124,6 @@ If PyInstaller fails while trying to write under the default application-support
 PYINSTALLER_CONFIG_DIR=/tmp/pyinstaller-config
 ```
 
-### Large build size
+### Windows builds from macOS
 
-The preview graph uses `matplotlib`, so packaged builds are larger than a minimal Tkinter-only app. That is expected.
+PyInstaller does not cross-compile Windows executables from macOS. To produce the real `.exe`, build on Windows itself or let the included GitHub Actions workflow run on `windows-latest`.

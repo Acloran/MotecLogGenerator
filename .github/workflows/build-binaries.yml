@@ -16,12 +16,12 @@ jobs:
         include:
           - os: windows-latest
             python-version: "3.14"
-            artifact-name: MotecLogGenerator-windows
-            artifact-path: dist/MotecLogGenerator.exe
+            artifact-name: MotecLogGeneratorQt-windows
+            artifact-path: dist/MotecLogGeneratorQt.exe
           - os: macos-latest
             python-version: "3.14"
-            artifact-name: MotecLogGenerator-macos
-            artifact-path: dist/MotecLogGenerator.app
+            artifact-name: MotecLogGeneratorQt-macos
+            artifact-path: dist/MotecLogGeneratorQt.app
 
     steps:
       - uses: actions/checkout@v4
@@ -35,7 +35,7 @@ jobs:
         run: python -m pip install -r requirements-build.txt
 
       - name: Build application
-        run: pyinstaller --noconfirm --clean motec_log_generator.spec
+        run: pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4

@@ -24,10 +24,8 @@ AIM support is implemented with [`libxrk`](https://github.com/m3rlin45/libxrk), 
 ## Requirements
 
 - Python 3.14 recommended
-- Tkinter
-- matplotlib
-- tkinterdnd2-universal
-- Runtime dependencies from [requirements.txt](/Users/acloran/Documents/GitHub/MotecLogGenerator/requirements.txt)
+- Runtime dependencies from [requirements.txt](/Users/acloran/Documents/GitHub/MotecLogGenerator/requirements.txt) for the legacy Tk app
+- Optional Qt dependencies from [requirements-pyside6.txt](/Users/acloran/Documents/GitHub/MotecLogGenerator/requirements-pyside6.txt) for the modern PySide6 app
 
 Install runtime dependencies:
 
@@ -52,6 +50,41 @@ The GUI lets you:
 - Batch-edit MoTeC metadata across multiple selected files
 - Track status directly on each file row instead of using a console pane
 - Provide a DBC only when CAN logs are involved
+
+## PySide6 App
+
+A full PySide6 version of the app now lives in [motec_log_generator_qt.py](/Users/acloran/Documents/GitHub/MotecLogGenerator/motec_log_generator_qt.py). The convenience launcher [pyside6_prototype.py](/Users/acloran/Documents/GitHub/MotecLogGenerator/pyside6_prototype.py) now opens that same Qt app. It includes:
+- A dark floating-card interface with rounded controls and soft shadows
+- A real file queue with drag-and-drop and automatic preview loading
+- A large speed-preview graph with drag-to-edit segment ranges
+- The split table workflow with `+`, `-`, auto split, reset, and `Make Files`
+- All MoTeC metadata fields in the editor panel
+- Live conversion through the existing backend into `.ld` files
+
+Install the optional Qt dependency:
+
+```bash
+python -m pip install -r requirements-pyside6.txt
+```
+
+Run the Qt app:
+
+```bash
+python motec_log_generator_qt.py
+```
+
+The existing launcher still works too:
+
+```bash
+python pyside6_prototype.py
+```
+
+You can preload specific files or run a short smoke test:
+
+```bash
+python motec_log_generator_qt.py examples/csv_sample.csv
+python motec_log_generator_qt.py --quit-after-ms 1500
+```
 
 ## CLI Usage
 
@@ -126,23 +159,23 @@ Install them:
 python -m pip install -r requirements-build.txt
 ```
 
-Build with the included PyInstaller spec file [motec_log_generator.spec](/Users/acloran/Documents/GitHub/MotecLogGenerator/motec_log_generator.spec):
+Build with the included PyInstaller spec file [motec_log_generator_qt.spec](/Users/acloran/Documents/GitHub/MotecLogGenerator/motec_log_generator_qt.spec):
 
 ```bash
-pyinstaller --noconfirm --clean motec_log_generator.spec
+pyinstaller --noconfirm --clean motec_log_generator_qt.spec
 ```
 
 Expected outputs:
-- Windows: `dist/MotecLogGenerator.exe`
-- macOS: `dist/MotecLogGenerator.app`
+- Windows: `dist/MotecLogGeneratorQt.exe`
+- macOS: `dist/MotecLogGeneratorQt.app`
 
-The spec file explicitly bundles the native `libxrk` pieces needed for AIM file support.
+The Qt spec bundles the native `libxrk` pieces needed for AIM file support and uses the packaged macOS and Windows app icons.
 
 ## GitHub Actions Build
 
 The workflow [build-binaries.yml](/Users/acloran/Documents/GitHub/MotecLogGenerator/.github/workflows/build-binaries.yml) builds release artifacts on both platforms:
-- Windows artifact: `MotecLogGenerator-windows`
-- macOS artifact: `MotecLogGenerator-macos`
+- Windows artifact: `MotecLogGeneratorQt-windows`
+- macOS artifact: `MotecLogGeneratorQt-macos`
 
 You can trigger it manually from the Actions tab with `workflow_dispatch`, or let it run on pushes and pull requests.
 
@@ -156,7 +189,7 @@ The spec file supports passing an `APPLE_CODESIGN_IDENTITY` environment variable
 
 ## Windows Deployment Notes
 
-The generated `.exe` is intended as a standalone deliverable. If Windows SmartScreen is a concern for distribution, signing the executable with a code-signing certificate is still recommended.
+The generated `.exe` is intended as a standalone deliverable. If Windows SmartScreen is a concern for distribution, signing the executable with a code-signing certificate is still recommended. PyInstaller does not cross-compile Windows executables from macOS, so the real `.exe` needs to be built on Windows or through the included GitHub Actions workflow.
 
 ## Examples
 
