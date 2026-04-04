@@ -8,6 +8,22 @@ from motec_log import MotecLog
 
 
 class MotecLogChannelTests(unittest.TestCase):
+    def test_add_channel_uses_quantity_type_as_short_name(self):
+        channel = Channel(
+            "Vehicle Speed",
+            "m/s",
+            float,
+            1,
+            [Message(0.0, 0.0), Message(1.0, 1.0)],
+            quantity_type="speed",
+        )
+
+        motec_log = MotecLog()
+        motec_log.initialize()
+        motec_log.add_channel(channel)
+
+        self.assertEqual("speed", motec_log.ld_channels[0].short_name)
+
     def test_add_channel_clips_extreme_values_without_overflow_warning(self):
         channel = Channel(
             "Vehicle Speed",

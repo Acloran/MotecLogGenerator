@@ -50,6 +50,7 @@ The GUI lets you:
 - Batch-edit MoTeC metadata across multiple selected files
 - Track status directly on each file row instead of using a console pane
 - Provide a DBC only when CAN logs are involved
+- Select a channel chart so matching names can assign quantity type and unit metadata during preview and export
 
 ## PySide6 App
 
@@ -146,6 +147,18 @@ usage: motec_log_generator.py [-h] [--output OUTPUT] [--frequency FREQUENCY]
 ```
 
 If an AIM file contains session metadata, the converter will use it as a fallback when the equivalent MoTeC fields are left blank.
+
+## Channel Chart
+
+If your source channels are unitless or missing MoTeC-friendly metadata, you can supply a CSV chart with `channel_name`, `quantity_type`, and `unit` columns. Matching channel names are assigned that metadata before the `.ld` file is written. Unmatched channels keep their existing behavior.
+
+A starter template is included at [examples/channel_unit_chart_template.csv](/Users/acloran/Documents/GitHub/MotecLogGenerator/examples/channel_unit_chart_template.csv).
+
+CLI example:
+
+```bash
+python motec_log_generator.py /path/to/log.csv CSV --unit-chart /path/to/channel_units.csv
+```
 
 ## Building Desktop Artifacts
 

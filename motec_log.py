@@ -93,8 +93,11 @@ class MotecLog(object):
         # decimals = log_channel.decimals
         decimals = 0
 
+        # The reverse-engineered ld channel header exposes a short-name slot in addition to
+        # the full channel name and unit, so we persist the chart quantity type there.
+        quantity_type = (getattr(log_channel, "quantity_type", "") or "").strip()
         ld_channel = ldChan(None, meta_ptr, prev_meta_ptr, next_meta_ptr, data_ptr, data_len, \
-            data_type, freq, shift, multiplier, scale, decimals, log_channel.name, "", \
+            data_type, freq, shift, multiplier, scale, decimals, log_channel.name, quantity_type[:8], \
             log_channel.units)
 
         # Add in the channel data

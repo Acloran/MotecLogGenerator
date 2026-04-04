@@ -72,10 +72,17 @@ class DataLog(object):
             copied.channels[channel_name] = channel.copy()
         return copied
 
-    def add_channel(self, name, units, data_type, decimals, initial_message=None):
+    def add_channel(self, name, units, data_type, decimals, initial_message=None, quantity_type=""):
         channel_name = self.__unique_channel_name(name)
         msg = [] if not initial_message else [initial_message]
-        self.channels[channel_name] = Channel(channel_name, units, data_type, decimals, msg)
+        self.channels[channel_name] = Channel(
+            channel_name,
+            units,
+            data_type,
+            decimals,
+            msg,
+            quantity_type=quantity_type,
+        )
         return channel_name
 
     def channel_names(self):
@@ -133,6 +140,7 @@ class DataLog(object):
                     channel.data_type,
                     channel.decimals,
                     filtered_messages,
+                    quantity_type=channel.quantity_type,
                 )
 
         return extracted
@@ -471,9 +479,10 @@ class DataLog(object):
 class Channel(object):
     """Represents a single channel of data containing a time series of values."""
 
-    def __init__(self, name, units, data_type, decimals, messages=None):
+    def __init__(self, name, units, data_type, decimals, messages=None, quantity_type=""):
         self.name = str(name)
         self.units = str(units)
+        self.quantity_type = str(quantity_type)
         self.data_type = data_type
         self.decimals = decimals
         if messages:
@@ -488,6 +497,7 @@ class Channel(object):
             self.data_type,
             self.decimals,
             [Message(message.timestamp, message.value) for message in self.messages],
+            quantity_type=self.quantity_type,
         )
 
     def start(self):
@@ -540,8 +550,9 @@ class Channel(object):
         self.messages = new_msgs
 
     def __str__(self):
-        return "Channel: %s, Units: %s, Decimals: %d, Messages: %d, Frequency: %.2f Hz" % (
+        return "Channel: %s, Quantity: %s, Units: %s, Decimals: %d, Messages: %d, Frequency: %.2f Hz" % (
             self.name,
+            self.quantity_type,
             self.units,
             self.decimals,
             len(self.messages),

@@ -1,0 +1,150 @@
+channel_name,quantity_type,unit,notes
+# Generated starter chart from Log__2026_03_31__06_03_01.csv,,,Review low-confidence rows before relying on them in MoTeC
+Time,time,s,CSV time base column; not exported as a normal data channel
+Segment 1 Max,distance,m,guess from segment naming
+Segment 1 Min,distance,m,guess from segment naming
+Segment 1 Mean,distance,m,guess from segment naming
+Segment 2 Max,distance,m,guess from segment naming
+Segment 2 Min,distance,m,guess from segment naming
+Segment 2 Mean,distance,m,guess from segment naming
+Segment 3 Max,distance,m,guess from segment naming
+Segment 3 Min,distance,m,guess from segment naming
+Segment 3 Mean,distance,m,guess from segment naming
+Segment 4 Max,distance,m,guess from segment naming
+Segment 4 Min,distance,m,guess from segment naming
+Segment 4 Mean,distance,m,guess from segment naming
+Segment Unique Max,distance,m,guess from segment naming
+Segment Unique Min,distance,m,guess from segment naming
+Segment Unique Mean,distance,m,guess from segment naming
+Inverter Enabled,Unitless,,
+Inverter Torque Request,torque,Nm,
+OCV Estimate,Voltage,V,
+Power Limit,Power,W,
+Power Limit Feedback P,Power,W,controller term guess
+Power Limit Feedback I,Power,W,controller term guess
+Power Limit Feedback D,Power,W,controller term guess
+Power Limit Feedback Torque,Torque,Nm,
+PRNDL State,Unitless,,
+Ready To Drive Buzzer,Unitless,,
+Brake Light,Unitless,,
+Enable Drag Reduction,Unitless,,
+Pump Output,Unitless,,
+Radiator Output,Unitless,,
+Battery Fans Output,Unitless,,
+Vehicle Displacement X,distance,m,
+Vehicle Displacement Y,distance,m,
+Vehicle Displacement Z,distance,m,
+Vehicle Velocity X,speed,m/s,guess from small observed values
+Vehicle Velocity Y,speed,m/s,guess from small observed values
+Vehicle Velocity Z,speed,m/s,guess from small observed values
+Vehicle Acceleration X,Acceleration,m/s/s,
+Vehicle Acceleration Y,Acceleration,m/s/s,
+Vehicle Acceleration Z,Acceleration,m/s/s,
+HV Battery,Unitless,,
+LV Battery,Unitless,,
+Dash Speed,speed,m/s,guess from small observed values
+APPS Telemetry,Unitless,,
+BSE Telemetry,Unitless,,
+Steering Wheel Telemetry,Unitless,,
+APPS Fault,Unitless,,
+BSE Fault,Unitless,,
+STOMPP Fault,Unitless,,
+Steering Fault,Unitless,,
+Voltage,Voltage,V,generic signal name
+Current,Current,A,generic signal name
+State of Charge,Unitless,,
+Pack Voltage Mean,Voltage,V,
+Pack Voltage Minimum,Voltage,V,
+Pack Voltage Maximum,Voltage,V,
+Pack Voltage Range,Voltage,V,
+Pack Temp Mean,Temperature,C,
+Pack Temp Minimum,Temperature,C,
+Pack Temp Maximum,Temperature,C,
+Pack Temp Range,Temperature,C,
+IMD,Unitless,,
+AMS,Unitless,,
+Contactor Status,Unitless,,
+Cell Voltage Mean,Voltage,V,
+Cell Voltage Max,Voltage,V,
+Cell Voltage Min,Voltage,V,
+Cell Temps Mean,Temperature,C,
+Cell Temps Max,Temperature,C,
+Cell Temps Min,Temperature,C,
+Volumetric Flow Rate,Volume Flow,L/min,
+Water Temp Inverter,Temperature,C,
+Water Temp Motor,Temperature,C,
+Water Temp Radiator,Temperature,C,
+Radiator Fan RPM Percentage,Unitless,,
+LV Voltage,Voltage,V,
+LV State of Charge,Unitless,,
+LV Current,Current,A,
+Voltage Input into DC,Voltage,V,
+Current Input into DC,Current,A,
+RPM,Angular Speed,rpm,
+Inverter Temp,Temperature,C,
+Motor Temp,Temperature,C,
+Motor Angle,Angle,deg,
+Resolver Angle,Angle,deg,
+Phase A Current,Current,A,
+Phase B Current,Current,A,
+Phase C Current,Current,A,
+BC Voltage,Voltage,V,
+AB Voltage,Voltage,V,
+Output Voltage,Voltage,V,
+Inverter Frequency,Frequency,Hz,
+Actual Torque,Torque,Nm,
+Torque Command,Torque,Nm,
+Fault Vector,Unitless,,
+State Vector,Unitless,,
+APPS 1 Voltage,Voltage,V,
+APPS 2 Voltage,Voltage,V,
+BSE 1 Voltage,Voltage,V,
+BSE 2 Voltage,Voltage,V,
+Steer Voltage,Voltage,V,
+Suspension 1 Voltage,Voltage,V,
+Suspension 2 Voltage,Voltage,V,
+Front Left Wheel Speed,speed,m/s,guess from small observed values
+Front Right Wheel Speed,speed,m/s,guess from small observed values
+Back Left Wheel Speed,speed,m/s,guess from small observed values
+Back Right Wheel Speed,speed,m/s,guess from small observed values
+VCU Acceleration X,Acceleration,m/s/s,
+VCU Acceleration Y,Acceleration,m/s/s,
+VCU Acceleration Z,Acceleration,m/s/s,
+HVC Acceleration X,Acceleration,m/s/s,
+HVC Acceleration Y,Acceleration,m/s/s,
+HVC Acceleration Z,Acceleration,m/s/s,
+PDU Acceleration X,Acceleration,m/s/s,
+PDU Acceleration Y,Acceleration,m/s/s,
+PDU Acceleration Z,Acceleration,m/s/s,
+Front Left Acceleration X,Acceleration,m/s/s,
+Front Left Acceleration Y,Acceleration,m/s/s,
+Front Left Acceleration Z,Acceleration,m/s/s,
+Front Right Acceleration X,Acceleration,m/s/s,
+Front Right Acceleration Y,Acceleration,m/s/s,
+Front Right Acceleration Z,Acceleration,m/s/s,
+Back Left Acceleration X,Acceleration,m/s/s,
+Back Left Acceleration Y,Acceleration,m/s/s,
+Back Left Acceleration Z,Acceleration,m/s/s,
+Back Right Acceleration X,Acceleration,m/s/s,
+Back Right Acceleration Y,Acceleration,m/s/s,
+Back Right Acceleration Z,Acceleration,m/s/s,
+VCU Gyro X,Angular Speed,rad/s,
+VCU Gyro Y,Angular Speed,rad/s,
+VCU Gyro Z,Angular Speed,rad/s,
+HVC Gyro X,Angular Speed,rad/s,
+HVC Gyro Y,Angular Speed,rad/s,
+HVC Gyro Z,Angular Speed,rad/s,
+PDU Gyro X,Angular Speed,rad/s,
+PDU Gyro Y,Angular Speed,rad/s,
+PDU Gyro Z,Angular Speed,rad/s,
+Latitude,Angle,deg,
+Longitude,Angle,deg,
+Speed,Speed,m/s,
+Heading,Angle,deg,
+Hour,Time,,timestamp component / discrete field
+Minute,Time,,timestamp component / discrete field
+Seconds,Time,s,timestamp component / discrete field
+Year,Time,,timestamp component / discrete field
+Month,Time,,timestamp component / discrete field
+Day,Time,,timestamp component / discrete field
+Milliseconds,Time,ms,timestamp component

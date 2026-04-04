@@ -15,6 +15,7 @@ except ImportError:
 
 from data_log import DataLog, normalize_label
 from motec_log import MotecLog
+from unit_chart import apply_channel_unit_chart
 
 
 AUTO_DETECT = "Auto-Detect"
@@ -194,10 +195,11 @@ def apply_metadata(motec_log, args, data_log, source_path):
         motec_log.datetime = log_datetime
 
 
-def load_data_log(log_path, log_type, can_db=None, status_callback=None):
+def load_data_log(log_path, log_type, can_db=None, status_callback=None, channel_unit_chart=None):
     emit_status(status_callback, "Loading %s" % os.path.basename(log_path))
     data_log = DataLog(Path(log_path).stem)
     data_log.load_file(log_path, log_type, can_db)
+    apply_channel_unit_chart(data_log, channel_unit_chart)
     if not data_log.channels:
         raise RuntimeError("Failed to find any channels in log data: %s" % log_path)
     emit_status(
@@ -276,13 +278,17 @@ def process_log_file(
     status_callback=None,
     source_data_log=None,
     output_stem=None,
+    channel_unit_chart=None,
 ):
     data_log = source_data_log.copy() if source_data_log is not None else load_data_log(
         log_path,
         log_type,
         can_db,
         status_callback,
+        channel_unit_chart=channel_unit_chart,
     )
+    if source_data_log is not None:
+        apply_channel_unit_chart(data_log, channel_unit_chart)
 
     segments = normalized_segments(data_log, settings)
     frequency = resolve_frequency(args.frequency)

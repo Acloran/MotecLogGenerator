@@ -1,0 +1,5 @@
+channel_name,quantity_type,unit,notes
+# Exact channel name,MoTeC quantity type,MoTeC unit text,optional note
+# Speed,speed,km/h,
+# Engine RPM,rotspd,rpm,
+# Throttle Position,Unitless,,

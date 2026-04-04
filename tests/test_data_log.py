@@ -81,7 +81,7 @@ class DataLogParsingTests(unittest.TestCase):
 
     def test_extract_segment_rebases_time(self):
         data_log = DataLog()
-        data_log.add_channel("Speed", "kph", float, 1)
+        data_log.add_channel("Speed", "kph", float, 1, quantity_type="speed")
         data_log.channels["Speed"].messages = [
             Message(0.0, 0.0),
             Message(5.0, 10.0),
@@ -91,6 +91,7 @@ class DataLogParsingTests(unittest.TestCase):
         segment = data_log.extract_segment(5.0, 10.0, rebase_time=True)
 
         self.assertEqual(2, len(segment.channels["Speed"].messages))
+        self.assertEqual("speed", segment.channels["Speed"].quantity_type)
         self.assertAlmostEqual(0.0, segment.channels["Speed"].messages[0].timestamp)
         self.assertAlmostEqual(5.0, segment.channels["Speed"].messages[-1].timestamp)
 

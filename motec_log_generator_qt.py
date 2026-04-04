@@ -35,6 +35,7 @@ from motec_converter_core import (
     process_log_file,
     resolve_frequency,
 )
+from unit_chart import load_channel_unit_chart
 
 
 APP_BG = "#0b0f14"
@@ -137,22 +138,30 @@ class WorkerSignals(QtCore.QObject):
 
 
 class PreviewLoadTask(QtCore.QRunnable):
-    def __init__(self, item_id, preview_token, path, detected_type, dbc_path):
+    def __init__(self, item_id, preview_token, path, detected_type, dbc_path, unit_chart_path):
         super().__init__()
         self.item_id = item_id
         self.preview_token = preview_token
         self.path = path
         self.detected_type = detected_type
         self.dbc_path = dbc_path
+        self.unit_chart_path = unit_chart_path
         self.signals = WorkerSignals()
         self.setAutoDelete(True)
 
     def run(self):
         try:
             can_db = None
+            channel_unit_chart = load_channel_unit_chart(self.unit_chart_path)
             if self.detected_type == "CAN":
                 can_db = load_can_database(self.dbc_path)
-            preview_log = load_data_log(self.path, self.detected_type, can_db, status_callback=lambda _msg: None)
+            preview_log = load_data_log(
+                self.path,
+                self.detected_type,
+                can_db,
+                status_callback=lambda _msg: None,
+                channel_unit_chart=channel_unit_chart,
+            )
         except Exception as exc:
             self.signals.preview_finished.emit(self.item_id, self.preview_token, None, str(exc))
             return
@@ -161,18 +170,20 @@ class PreviewLoadTask(QtCore.QRunnable):
 
 
 class ConvertQueueTask(QtCore.QRunnable):
-    def __init__(self, items, output_dir, frequency_text, dbc_path):
+    def __init__(self, items, output_dir, frequency_text, dbc_path, unit_chart_path):
         super().__init__()
         self.items = items
         self.output_dir = output_dir
         self.frequency_text = frequency_text
         self.dbc_path = dbc_path
+        self.unit_chart_path = unit_chart_path
         self.signals = WorkerSignals()
         self.setAutoDelete(True)
 
     def run(self):
         can_db = None
         try:
+            channel_unit_chart = load_channel_unit_chart(self.unit_chart_path)
             if any(item.detected_type == "CAN" for item in self.items):
                 can_db = load_can_database(self.dbc_path)
         except Exception as exc:
@@ -198,6 +209,7 @@ class ConvertQueueTask(QtCore.QRunnable):
                     ),
                     source_data_log=source_log,
                     output_stem=item.output_stem,
+                    channel_unit_chart=channel_unit_chart,
                 )
             except Exception as exc:
                 self.signals.convert_item_error.emit(item.item_id, str(exc))
@@ -962,6 +974,8 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         self.output_edit = QtWidgets.QLineEdit()
         self.dbc_edit = QtWidgets.QLineEdit()
         self.dbc_edit.textChanged.connect(self._on_dbc_path_changed)
+        self.unit_chart_edit = QtWidgets.QLineEdit()
+        self.unit_chart_edit.editingFinished.connect(self._on_unit_chart_path_changed)
 
         output_button = QtWidgets.QPushButton("...")
         output_button.setMinimumWidth(42)
@@ -969,6 +983,9 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         dbc_button = QtWidgets.QPushButton("...")
         dbc_button.setMinimumWidth(42)
         dbc_button.clicked.connect(self._browse_dbc)
+        self.unit_chart_button = QtWidgets.QPushButton("...")
+        self.unit_chart_button.setMinimumWidth(42)
+        self.unit_chart_button.clicked.connect(self._browse_unit_chart)
 
         settings_grid.addWidget(self._label("Frequency"), 0, 0)
         settings_grid.addWidget(self.frequency_edit, 0, 1, 1, 2)
@@ -978,6 +995,9 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         settings_grid.addWidget(self._label("DBC"), 2, 0)
         settings_grid.addWidget(self.dbc_edit, 2, 1)
         settings_grid.addWidget(dbc_button, 2, 2)
+        settings_grid.addWidget(self._label("Channel Chart"), 3, 0)
+        settings_grid.addWidget(self.unit_chart_edit, 3, 1)
+        settings_grid.addWidget(self.unit_chart_button, 3, 2)
         settings_grid.setColumnStretch(1, 1)
 
         self.progress_card = FloatingCard("Progress", "Convert the queue when your preview and metadata look right.")
@@ -1358,6 +1378,17 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         if path:
             self.dbc_edit.setText(path)
 
+    def _browse_unit_chart(self):
+        path, _selected = QtWidgets.QFileDialog.getOpenFileName(
+            self,
+            "Select channel chart",
+            "",
+            "CSV Files (*.csv);;All Files (*.*)",
+        )
+        if path:
+            self.unit_chart_edit.setText(path)
+            self._on_unit_chart_path_changed()
+
     def _on_dbc_path_changed(self):
         dbc_path = self.dbc_edit.text().strip()
         for item in self.file_items.values():
@@ -1371,6 +1402,23 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             self._refresh_queue_row(item.item_id)
             if dbc_path:
                 self._load_preview_for_item(item, force_reload=True, show_placeholder=(item.item_id == self.current_preview_id))
+
+    def _on_unit_chart_path_changed(self):
+        for item in self.file_items.values():
+            self.preview_token_counter += 1
+            item.preview_token = self.preview_token_counter
+            item.preview_log = None
+            item.preview_channels = []
+            item.preview_error = ""
+            item.preview_loading = False
+            if item.status == "Preview Ready":
+                item.status = "Queued"
+                item.detail = ""
+            self._refresh_queue_row(item.item_id)
+
+        selected_items = self._selected_items()
+        if len(selected_items) == 1:
+            self._load_preview_for_item(selected_items[0], force_reload=True, show_placeholder=True)
 
     def _load_preview_for_item(self, item, force_reload=False, show_placeholder=True):
         if item.preview_log is not None and not force_reload:
@@ -1412,6 +1460,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             item.path,
             item.detected_type,
             self.dbc_edit.text().strip(),
+            self.unit_chart_edit.text().strip(),
         )
         task.signals.preview_finished.connect(self._finish_preview_load)
         self.preview_pool.start(task)
@@ -2026,6 +2075,12 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             QtWidgets.QMessageBox.warning(self, "DBC Required", "A DBC file is required when CAN logs are in the queue.")
             return False
 
+        try:
+            load_channel_unit_chart(self.unit_chart_edit.text().strip())
+        except Exception as exc:
+            QtWidgets.QMessageBox.warning(self, "Invalid Channel Chart", str(exc))
+            return False
+
         self._apply_metadata_to_selected()
         return True
 
@@ -2038,6 +2093,8 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         self.frequency_edit.setEnabled(enabled)
         self.output_edit.setEnabled(enabled)
         self.dbc_edit.setEnabled(enabled)
+        self.unit_chart_edit.setEnabled(enabled)
+        self.unit_chart_button.setEnabled(enabled)
         self.metadata_apply_button.setEnabled(enabled and bool(self._selected_items()))
         if running:
             self._set_editor_enabled(False, single_preview=False)
@@ -2060,6 +2117,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             self.output_edit.text().strip(),
             self.frequency_edit.text(),
             self.dbc_edit.text().strip(),
+            self.unit_chart_edit.text().strip(),
         )
         task.signals.convert_item_status.connect(self._update_item_status)
         task.signals.convert_item_complete.connect(self._mark_item_complete)
