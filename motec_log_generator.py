@@ -43,6 +43,7 @@ except ImportError:
     _worker = None
 
 from data_log import DataLog, normalize_label
+from motec_beacons import normalize_beacon_times, write_motec_beacon_file
 from motec_log import MotecLog
 from unit_chart import apply_channel_unit_chart, load_channel_unit_chart
 
@@ -151,6 +152,8 @@ class FileSettings:
     preview_channel: str = ""
     motion_channel: str = ""
     segment_ranges: list[tuple[float, float]] = field(default_factory=list)
+    beacon_markers: list[float] = field(default_factory=list)
+    beacon_line: tuple[float, float, float, float] | None = None
 
     def copy(self):
         return copy.deepcopy(self)
@@ -417,6 +420,22 @@ def build_args_for_settings(settings, frequency_text):
     return args
 
 
+def beacon_times_for_segment(settings, start_time, end_time):
+    if settings is None:
+        return []
+
+    beacon_times = getattr(settings, "beacon_markers", []) or []
+    if not beacon_times:
+        return []
+
+    relative_times = [
+        float(beacon_time) - float(start_time)
+        for beacon_time in beacon_times
+        if float(start_time) <= float(beacon_time) <= float(end_time)
+    ]
+    return normalize_beacon_times(relative_times)
+
+
 def process_log_file(
     log_path,
     log_type,
@@ -467,6 +486,10 @@ def process_log_file(
             os.makedirs(output_dir, exist_ok=True)
 
         motec_log.write(output_filename)
+        write_motec_beacon_file(
+            output_filename,
+            beacon_times_for_segment(settings, start_time, end_time),
+        )
         written_files.append(output_filename)
 
     emit_status(status_callback, "Done")

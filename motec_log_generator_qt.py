@@ -17,6 +17,16 @@ except ImportError as exc:
         "`python -m pip install -r requirements-pyside6.txt`."
     ) from exc
 
+from motec_beacons import (
+    beacon_preview_rows,
+    build_gps_trace,
+    downsample_points,
+    format_lap_time,
+    lat_lon_to_xy,
+    project_geo_line,
+    project_trace,
+    xy_to_lat_lon,
+)
 from motec_converter_core import (
     METADATA_FIELDS,
     FileSettings,
@@ -349,6 +359,291 @@ class SegmentTableWidget(QtWidgets.QTableWidget):
             event.accept()
             return
         super().keyPressEvent(event)
+
+
+class LapPreviewTableWidget(QtWidgets.QTableWidget):
+    def __init__(self, parent=None):
+        super().__init__(0, 5, parent)
+        self.setObjectName("SegmentTable")
+        self.setHorizontalHeaderLabels(["File", "Lap", "Start", "End", "Length"])
+        self.setSelectionBehavior(QtWidgets.QAbstractItemView.SelectRows)
+        self.setSelectionMode(QtWidgets.QAbstractItemView.SingleSelection)
+        self.setEditTriggers(QtWidgets.QAbstractItemView.NoEditTriggers)
+        self.verticalHeader().setVisible(False)
+        self.horizontalHeader().setStretchLastSection(False)
+        self.horizontalHeader().setSectionResizeMode(0, QtWidgets.QHeaderView.Stretch)
+        self.horizontalHeader().setSectionResizeMode(1, QtWidgets.QHeaderView.ResizeToContents)
+        self.horizontalHeader().setSectionResizeMode(2, QtWidgets.QHeaderView.ResizeToContents)
+        self.horizontalHeader().setSectionResizeMode(3, QtWidgets.QHeaderView.ResizeToContents)
+        self.horizontalHeader().setSectionResizeMode(4, QtWidgets.QHeaderView.ResizeToContents)
+        self.setMinimumHeight(250)
+        self.setHorizontalScrollBarPolicy(QtCore.Qt.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(QtCore.Qt.ScrollBarAsNeeded)
+
+
+class BeaconMapWidget(QtWidgets.QWidget):
+    line_drawn = QtCore.Signal(float, float, float, float)
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setMinimumHeight(500)
+        self.setSizePolicy(QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Expanding)
+        self.title = "GPS Beacon Map"
+        self.subtitle = "Select one or more files with GPS to begin."
+        self.placeholder = "Select files with Latitude and Longitude channels."
+        self.map_traces = []
+        self.drawn_line = None
+        self._drag_start = None
+        self._drag_end = None
+        self._data_bounds = None
+
+    def clear_map(self, placeholder, subtitle=""):
+        self.map_traces = []
+        self.drawn_line = None
+        self._drag_start = None
+        self._drag_end = None
+        self._data_bounds = None
+        self.placeholder = placeholder
+        self.subtitle = subtitle
+        self.update()
+
+    def set_map(self, map_traces, *, title, subtitle, placeholder="", drawn_line=None):
+        self.map_traces = list(map_traces)
+        self.title = title
+        self.subtitle = subtitle
+        self.placeholder = placeholder
+        self.drawn_line = drawn_line
+        self._drag_start = None
+        self._drag_end = None
+        self._data_bounds = self._compute_bounds()
+        self.update()
+
+    def _outer_rect(self):
+        return self.rect().adjusted(14, 14, -14, -14)
+
+    def _plot_rect(self):
+        outer = self._outer_rect()
+        return QtCore.QRectF(
+            outer.left() + 18,
+            outer.top() + 74,
+            outer.width() - 36,
+            outer.height() - 88,
+        )
+
+    def _inner_rect(self):
+        return self._plot_rect().adjusted(18, 18, -18, -18)
+
+    def _compute_bounds(self):
+        x_values = []
+        y_values = []
+        for trace in self.map_traces:
+            x_values.extend(trace["x"])
+            y_values.extend(trace["y"])
+            for crossing_x, crossing_y in trace.get("crossings", []):
+                x_values.append(crossing_x)
+                y_values.append(crossing_y)
+
+        if self.drawn_line is not None:
+            x_values.extend([self.drawn_line[0], self.drawn_line[2]])
+            y_values.extend([self.drawn_line[1], self.drawn_line[3]])
+
+        if not x_values or not y_values:
+            return None
+
+        min_x = min(x_values)
+        max_x = max(x_values)
+        min_y = min(y_values)
+        max_y = max(y_values)
+        span_x = max(1.0, max_x - min_x)
+        span_y = max(1.0, max_y - min_y)
+        padding_x = span_x * 0.08
+        padding_y = span_y * 0.08
+        return (
+            min_x - padding_x,
+            max_x + padding_x,
+            min_y - padding_y,
+            max_y + padding_y,
+        )
+
+    def _display_bounds(self):
+        if self._data_bounds is None:
+            return None
+
+        inner = self._inner_rect()
+        min_x, max_x, min_y, max_y = self._data_bounds
+        width = max(1.0, max_x - min_x)
+        height = max(1.0, max_y - min_y)
+        plot_aspect = max(1e-9, inner.width()) / max(1e-9, inner.height())
+        data_aspect = width / height
+
+        if data_aspect > plot_aspect:
+            target_height = width / plot_aspect
+            padding = (target_height - height) * 0.5
+            min_y -= padding
+            max_y += padding
+        else:
+            target_width = height * plot_aspect
+            padding = (target_width - width) * 0.5
+            min_x -= padding
+            max_x += padding
+
+        return min_x, max_x, min_y, max_y
+
+    def _world_to_screen(self, x_value, y_value):
+        inner = self._inner_rect()
+        bounds = self._display_bounds()
+        if bounds is None:
+            return QtCore.QPointF(inner.center())
+
+        min_x, max_x, min_y, max_y = bounds
+        x_ratio = (x_value - min_x) / max(1e-9, (max_x - min_x))
+        y_ratio = (y_value - min_y) / max(1e-9, (max_y - min_y))
+        return QtCore.QPointF(
+            inner.left() + (inner.width() * x_ratio),
+            inner.bottom() - (inner.height() * y_ratio),
+        )
+
+    def _screen_to_world(self, x_pos, y_pos):
+        inner = self._inner_rect()
+        bounds = self._display_bounds()
+        if bounds is None:
+            return None
+        min_x, max_x, min_y, max_y = bounds
+        x_ratio = (x_pos - inner.left()) / max(1e-9, inner.width())
+        y_ratio = (inner.bottom() - y_pos) / max(1e-9, inner.height())
+        x_value = min_x + ((max_x - min_x) * x_ratio)
+        y_value = min_y + ((max_y - min_y) * y_ratio)
+        return x_value, y_value
+
+    def paintEvent(self, _event):
+        painter = QtGui.QPainter(self)
+        painter.setRenderHint(QtGui.QPainter.Antialiasing)
+        painter.fillRect(self.rect(), QtGui.QColor(APP_CARD))
+
+        outer = self._outer_rect()
+        painter.setPen(QtGui.QPen(QtGui.QColor(APP_BORDER), 1))
+        painter.setBrush(QtGui.QColor(APP_PLOT_BG))
+        painter.drawRoundedRect(outer, 28, 28)
+
+        title_rect = QtCore.QRectF(outer.left() + 22, outer.top() + 18, outer.width() - 44, 26)
+        painter.setPen(QtGui.QColor(APP_TEXT))
+        title_font = painter.font()
+        title_font.setPointSize(14)
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.drawText(title_rect, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, self.title)
+
+        subtitle_rect = QtCore.QRectF(outer.left() + 22, outer.top() + 46, outer.width() - 44, 20)
+        painter.setPen(QtGui.QColor(APP_MUTED))
+        subtitle_font = painter.font()
+        subtitle_font.setPointSize(10)
+        subtitle_font.setBold(False)
+        painter.setFont(subtitle_font)
+        painter.drawText(subtitle_rect, QtCore.Qt.AlignLeft | QtCore.Qt.AlignVCenter, self.subtitle)
+
+        plot_rect = self._plot_rect()
+        painter.setPen(QtGui.QPen(QtGui.QColor(APP_BORDER_SOFT), 1))
+        painter.setBrush(QtGui.QColor(APP_CARD_ALT))
+        painter.drawRoundedRect(plot_rect, 24, 24)
+
+        if not self.map_traces:
+            painter.setPen(QtGui.QColor(APP_MUTED))
+            painter.drawText(plot_rect, QtCore.Qt.AlignCenter, self.placeholder)
+            return
+
+        inner = self._inner_rect()
+        painter.setPen(QtGui.QPen(QtGui.QColor(APP_PLOT_GRID), 1))
+        for row_index in range(5):
+            y_pos = inner.top() + (inner.height() * row_index / 4.0)
+            painter.drawLine(QtCore.QPointF(inner.left(), y_pos), QtCore.QPointF(inner.right(), y_pos))
+        for column_index in range(5):
+            x_pos = inner.left() + (inner.width() * column_index / 4.0)
+            painter.drawLine(QtCore.QPointF(x_pos, inner.top()), QtCore.QPointF(x_pos, inner.bottom()))
+
+        for trace in self.map_traces:
+            if len(trace["x"]) < 2:
+                continue
+            path = QtGui.QPainterPath()
+            first_point = self._world_to_screen(trace["x"][0], trace["y"][0])
+            path.moveTo(first_point)
+            for x_value, y_value in zip(trace["x"][1:], trace["y"][1:]):
+                path.lineTo(self._world_to_screen(x_value, y_value))
+
+            color = QtGui.QColor(trace["color"])
+            color.setAlpha(220)
+            painter.setPen(QtGui.QPen(color, 1.9))
+            painter.setBrush(QtCore.Qt.NoBrush)
+            painter.drawPath(path)
+
+            crossing_brush = QtGui.QBrush(QtGui.QColor(trace["color"]))
+            painter.setBrush(crossing_brush)
+            painter.setPen(QtCore.Qt.NoPen)
+            for crossing_x, crossing_y in trace.get("crossings", []):
+                crossing_point = self._world_to_screen(crossing_x, crossing_y)
+                painter.drawEllipse(crossing_point, 4.5, 4.5)
+
+        line_points = self.drawn_line
+        if self._drag_start is not None and self._drag_end is not None:
+            line_points = (self._drag_start[0], self._drag_start[1], self._drag_end[0], self._drag_end[1])
+
+        if line_points is not None:
+            start_point = self._world_to_screen(line_points[0], line_points[1])
+            end_point = self._world_to_screen(line_points[2], line_points[3])
+            painter.setPen(QtGui.QPen(QtGui.QColor(APP_WARNING), 3.0))
+            painter.drawLine(start_point, end_point)
+            painter.setBrush(QtGui.QColor(APP_WARNING))
+            painter.setPen(QtCore.Qt.NoPen)
+            painter.drawEllipse(start_point, 4.0, 4.0)
+            painter.drawEllipse(end_point, 4.0, 4.0)
+
+        painter.setPen(QtGui.QColor(APP_MUTED))
+        axis_font = painter.font()
+        axis_font.setPointSize(9)
+        painter.setFont(axis_font)
+        painter.drawText(
+            QtCore.QRectF(plot_rect.right() - 72, plot_rect.top() + 12, 60, 16),
+            QtCore.Qt.AlignRight | QtCore.Qt.AlignVCenter,
+            "meters",
+        )
+
+    def mousePressEvent(self, event):
+        if event.button() != QtCore.Qt.LeftButton or not self.map_traces or self._data_bounds is None:
+            return
+        inner = self._inner_rect()
+        if not inner.contains(event.position()):
+            return
+        world_point = self._screen_to_world(event.position().x(), event.position().y())
+        if world_point is None:
+            return
+        self._drag_start = world_point
+        self._drag_end = world_point
+        self.update()
+
+    def mouseMoveEvent(self, event):
+        if self._drag_start is None:
+            return
+        world_point = self._screen_to_world(event.position().x(), event.position().y())
+        if world_point is None:
+            return
+        self._drag_end = world_point
+        self.update()
+
+    def mouseReleaseEvent(self, _event):
+        if self._drag_start is None or self._drag_end is None:
+            return
+
+        start_x, start_y = self._drag_start
+        end_x, end_y = self._drag_end
+        self._drag_start = None
+        self._drag_end = None
+
+        if math.hypot(end_x - start_x, end_y - start_y) < 3.0:
+            self.update()
+            return
+
+        self.drawn_line = (start_x, start_y, end_x, end_y)
+        self.line_drawn.emit(start_x, start_y, end_x, end_y)
+        self.update()
 
 
 class PlotPreviewWidget(QtWidgets.QWidget):
@@ -721,6 +1016,9 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             QWidget#AppRoot {
                 background: #0b0f14;
             }
+            QWidget#WorkflowPage {
+                background: transparent;
+            }
             QFrame#FloatingCard {
                 background: #161f2b;
                 border: 1px solid #273647;
@@ -879,6 +1177,35 @@ class MotecQtWindow(QtWidgets.QMainWindow):
                 background: transparent;
                 width: 22px;
             }
+            QTabWidget::pane {
+                border: none;
+                background: transparent;
+            }
+            QTabWidget {
+                background: transparent;
+            }
+            QTabWidget > QWidget {
+                background: transparent;
+            }
+            QStackedWidget {
+                background: transparent;
+            }
+            QTabBar::tab {
+                background: #161f2b;
+                color: #94a7bd;
+                border: 1px solid #273647;
+                border-bottom: none;
+                border-top-left-radius: 18px;
+                border-top-right-radius: 18px;
+                padding: 10px 18px;
+                margin-right: 8px;
+                font-weight: 700;
+            }
+            QTabBar::tab:selected {
+                background: #1f2c3a;
+                color: #f4f7fb;
+                border-color: #314356;
+            }
             """
         )
 
@@ -915,12 +1242,41 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         left_scroll.setMinimumWidth(440)
         right_scroll.setMinimumWidth(470)
         splitter.addWidget(left_scroll)
-        splitter.addWidget(center_content)
-        splitter.addWidget(right_scroll)
+
+        self.workflow_tabs = QtWidgets.QTabWidget()
+        self.workflow_tabs.setDocumentMode(True)
+        self.workflow_tabs.setTabPosition(QtWidgets.QTabWidget.North)
+        splitter.addWidget(self.workflow_tabs)
         splitter.setStretchFactor(0, 30)
-        splitter.setStretchFactor(1, 40)
-        splitter.setStretchFactor(2, 30)
-        splitter.setSizes([460, 720, 500])
+        splitter.setStretchFactor(1, 70)
+        splitter.setSizes([460, 1240])
+
+        prepare_page = QtWidgets.QWidget()
+        prepare_page.setObjectName("WorkflowPage")
+        prepare_page.setAttribute(QtCore.Qt.WA_StyledBackground, False)
+        prepare_page.setAutoFillBackground(False)
+        prepare_layout = QtWidgets.QHBoxLayout(prepare_page)
+        prepare_layout.setContentsMargins(0, 6, 0, 0)
+        prepare_layout.setSpacing(18)
+        prepare_splitter = QtWidgets.QSplitter(QtCore.Qt.Horizontal)
+        prepare_splitter.setChildrenCollapsible(False)
+        prepare_splitter.setHandleWidth(22)
+        prepare_layout.addWidget(prepare_splitter)
+        prepare_splitter.addWidget(center_content)
+        prepare_splitter.addWidget(right_scroll)
+        prepare_splitter.setStretchFactor(0, 55)
+        prepare_splitter.setStretchFactor(1, 45)
+        prepare_splitter.setSizes([760, 540])
+        self.workflow_tabs.addTab(prepare_page, "Prepare")
+
+        beacon_page = QtWidgets.QWidget()
+        beacon_page.setObjectName("WorkflowPage")
+        beacon_page.setAttribute(QtCore.Qt.WA_StyledBackground, False)
+        beacon_page.setAutoFillBackground(False)
+        beacon_layout = QtWidgets.QHBoxLayout(beacon_page)
+        beacon_layout.setContentsMargins(0, 6, 0, 0)
+        beacon_layout.setSpacing(18)
+        self.workflow_tabs.addTab(beacon_page, "Beacons")
 
         self.queue_card = FloatingCard(
             "Source Files",
@@ -1125,6 +1481,55 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         self.metadata_apply_button.setMinimumHeight(46)
         self.metadata_apply_button.clicked.connect(self._apply_metadata_to_selected)
         self.metadata_card.add_widget(self.metadata_apply_button)
+
+        self.beacon_card = FloatingCard(
+            "GPS Beacons",
+            "Select one or more prepared files, draw a single cross-track line, and the selected logs will all use that same beacon placement.",
+        )
+        beacon_layout.addWidget(self.beacon_card, 1)
+
+        beacon_header = QtWidgets.QHBoxLayout()
+        beacon_header.setSpacing(10)
+        self.beacon_files_chip = InfoChip("Files 0")
+        self.beacon_crossings_chip = InfoChip("Beacons 0")
+        self.beacon_laps_chip = InfoChip("Full Laps 0")
+        self.clear_beacon_button = QtWidgets.QPushButton("Clear Selected")
+        self.clear_beacon_button.clicked.connect(self._clear_selected_beacons)
+        beacon_header.addWidget(self.beacon_files_chip)
+        beacon_header.addWidget(self.beacon_crossings_chip)
+        beacon_header.addWidget(self.beacon_laps_chip)
+        beacon_header.addStretch(1)
+        beacon_header.addWidget(self.clear_beacon_button)
+        self.beacon_card.add_layout(beacon_header)
+
+        self.beacon_map_widget = BeaconMapWidget()
+        self.beacon_map_widget.line_drawn.connect(self._on_beacon_line_drawn)
+        self.beacon_card.add_widget(self.beacon_map_widget, 1)
+
+        self.beacon_hint = QtWidgets.QLabel(
+            "Draw a short line across the track near start-finish. Every time a selected trace crosses it, a MoTeC beacon will be written to the companion .ldx file."
+        )
+        self.beacon_hint.setObjectName("CardSubtitle")
+        self.beacon_hint.setWordWrap(True)
+        self.beacon_card.body_layout.insertWidget(2, self.beacon_hint)
+
+        self.beacon_table_card = FloatingCard(
+            "Lap Preview",
+            "Rows below are full laps only: each one runs from one beacon crossing to the next within a file.",
+        )
+        self.beacon_table_card.setMinimumWidth(360)
+        self.beacon_table_card.setMaximumWidth(430)
+        beacon_layout.addWidget(self.beacon_table_card)
+
+        self.beacon_summary = QtWidgets.QLabel("Draw a beacon line to preview laps.")
+        self.beacon_summary.setObjectName("CardSubtitle")
+        self.beacon_summary.setWordWrap(True)
+        self.beacon_table_card.add_widget(self.beacon_summary)
+
+        self.beacon_table = LapPreviewTableWidget()
+        self.beacon_table_card.add_widget(self.beacon_table, 1)
+        beacon_layout.setStretch(0, 100)
+        beacon_layout.setStretch(1, 32)
 
         self._set_editor_enabled(False, single_preview=False)
         self._update_undo_button_state()
@@ -1417,8 +1822,12 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             self._refresh_queue_row(item.item_id)
 
         selected_items = self._selected_items()
-        if len(selected_items) == 1:
-            self._load_preview_for_item(selected_items[0], force_reload=True, show_placeholder=True)
+        for index, item in enumerate(selected_items):
+            self._load_preview_for_item(
+                item,
+                force_reload=True,
+                show_placeholder=(index == 0 and len(selected_items) == 1),
+            )
 
     def _load_preview_for_item(self, item, force_reload=False, show_placeholder=True):
         if item.preview_log is not None and not force_reload:
@@ -1484,6 +1893,8 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             if self.preview_request_id == item_id:
                 self.plot_widget.clear_preview(error_message, item.path)
                 self.progress_summary.setText(error_message)
+            if any(selected_item.item_id == item_id for selected_item in self._selected_items()):
+                self._refresh_beacon_editor()
             return
 
         item.preview_log = preview_log
@@ -1504,11 +1915,14 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         if len(selected_items) == 1 and selected_items[0].item_id == item_id:
             self._populate_metadata_editor(selected_items)
             self._show_single_item_preview(item)
+        if any(selected_item.item_id == item_id for selected_item in selected_items):
+            self._refresh_beacon_editor()
 
     def _set_editor_enabled(self, enabled, single_preview):
         trim_enabled = enabled and single_preview
         metadata_enabled = enabled
         preview_enabled = enabled and single_preview
+        beacon_enabled = enabled
 
         self.metadata_editor.set_enabled(metadata_enabled)
         self.metadata_apply_button.setEnabled(metadata_enabled)
@@ -1523,6 +1937,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         ):
             button.setEnabled(trim_enabled)
         self.segment_table.setEnabled(trim_enabled)
+        self.clear_beacon_button.setEnabled(beacon_enabled)
 
     def _mark_metadata_dirty(self, field_name):
         self.metadata_dirty_fields.add(field_name)
@@ -1577,6 +1992,247 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         finally:
             self.editor_loading = False
 
+    def _gps_traces_for_items(self, items):
+        gps_pairs = []
+        skipped = []
+        for item in items:
+            if item.preview_log is None:
+                skipped.append((item.name, "Preview is still loading."))
+                continue
+            try:
+                gps_trace = build_gps_trace(item.preview_log)
+            except Exception as exc:
+                skipped.append((item.name, str(exc)))
+                continue
+            gps_trace.name = item.item_id
+            gps_trace.display_name = item.name
+            gps_pairs.append((item, gps_trace))
+        return gps_pairs, skipped
+
+    def _shared_beacon_line(self, items):
+        lines = [item.settings.beacon_line for item in items if item.settings.beacon_line is not None]
+        if not lines or len(lines) != len(items):
+            return None
+        first_line = lines[0]
+        if all(line == first_line for line in lines[1:]):
+            return first_line
+        return None
+
+    def _beacon_reference(self, gps_pairs, geo_line=None):
+        latitudes = [trace.latitudes[0] for _item, trace in gps_pairs]
+        longitudes = [trace.longitudes[0] for _item, trace in gps_pairs]
+        if geo_line is not None:
+            latitudes.extend([geo_line[0], geo_line[2]])
+            longitudes.extend([geo_line[1], geo_line[3]])
+        return (
+            sum(latitudes) / max(1, len(latitudes)),
+            sum(longitudes) / max(1, len(longitudes)),
+        )
+
+    def _populate_beacon_table(self, preview_rows):
+        self.beacon_table.setRowCount(0)
+        for row_index, row in enumerate(preview_rows):
+            self.beacon_table.insertRow(row_index)
+            values = [
+                row.file_label,
+                row.lap_label,
+                format_lap_time(row.start_time),
+                format_lap_time(row.end_time),
+                format_lap_time(row.duration),
+            ]
+            for column, text in enumerate(values):
+                self.beacon_table.setItem(row_index, column, QtWidgets.QTableWidgetItem(text))
+        if preview_rows:
+            self.beacon_table.setCurrentCell(0, 0)
+
+    def _render_beacon_preview(self, selected_items, gps_pairs, skipped, geo_line, preview_rows, crossings_by_file):
+        if not selected_items:
+            self.beacon_map_widget.clear_map(
+                "Select one or more prepared files with GPS to place beacons.",
+                "The beacon workflow follows the queue selection.",
+            )
+            self.beacon_summary.setText("Draw a beacon line to preview laps.")
+            self.beacon_files_chip.setText("Files 0")
+            self.beacon_crossings_chip.setText("Beacons 0")
+            self.beacon_laps_chip.setText("Full Laps 0")
+            self._populate_beacon_table([])
+            return
+
+        if not gps_pairs:
+            skipped_detail = skipped[0][1] if skipped else "No GPS traces are available for the current selection."
+            self.beacon_map_widget.clear_map(
+                "The selected files do not have usable Latitude/Longitude data yet.",
+                skipped_detail,
+            )
+            self.beacon_summary.setText(skipped_detail)
+            self.beacon_files_chip.setText("Files %d" % len(selected_items))
+            self.beacon_crossings_chip.setText("Beacons 0")
+            self.beacon_laps_chip.setText("Full Laps 0")
+            self._populate_beacon_table([])
+            return
+
+        reference_latitude, reference_longitude = self._beacon_reference(gps_pairs, geo_line)
+        map_traces = []
+        preview_crossings = 0
+        palette = ("#5aa6ff", "#49c075", "#ffb14a", "#ff6b6b", "#9d7dff", "#45c3ff")
+        for index, (_item, trace) in enumerate(gps_pairs):
+            x_values, y_values = project_trace(trace, reference_latitude, reference_longitude)
+            x_values, y_values = downsample_points(x_values, y_values)
+            crossings = []
+            for crossing in crossings_by_file.get(trace.name, []):
+                crossing_x, crossing_y = lat_lon_to_xy(
+                    crossing.latitude,
+                    crossing.longitude,
+                    reference_latitude,
+                    reference_longitude,
+                )
+                crossings.append((crossing_x, crossing_y))
+            preview_crossings += len(crossings)
+            map_traces.append(
+                {
+                    "name": trace.name,
+                    "x": x_values,
+                    "y": y_values,
+                    "color": palette[index % len(palette)],
+                    "crossings": crossings,
+                }
+            )
+
+        drawn_line = None
+        if geo_line is not None:
+            drawn_line = project_geo_line(geo_line, reference_latitude, reference_longitude)
+
+        if geo_line is not None:
+            subtitle = "One drawn line is shared across %d selected file(s)." % len(gps_pairs)
+        elif any(item.settings.beacon_line for item in selected_items):
+            subtitle = "Selected files do not share one saved beacon line. Draw a new line to replace them."
+        else:
+            subtitle = "Draw a cross-track line once and every selected file will preview against it."
+        if skipped:
+            subtitle += "  •  Skipped %d file(s) without GPS." % len(skipped)
+
+        self.beacon_map_widget.set_map(
+            map_traces,
+            title="GPS Beacon Map",
+            subtitle=subtitle,
+            placeholder="Draw a short line across the track to create beacons.",
+            drawn_line=drawn_line,
+        )
+
+        full_lap_count = len(preview_rows)
+        if geo_line is None:
+            summary = "Draw a line on the map to preview lap lengths and save beacons to the selected files."
+        elif preview_rows:
+            summary = "Previewing %d full lap(s) from %d beacon crossing(s) across %d file(s)." % (
+                full_lap_count,
+                preview_crossings,
+                len(gps_pairs),
+            )
+        else:
+            summary = "The current line did not create any full laps yet. You may only have one crossing per file."
+        if skipped:
+            summary += " %d selected file(s) were skipped because GPS was unavailable." % len(skipped)
+        lap_counts = {}
+        for row in preview_rows:
+            lap_counts[row.file_label] = lap_counts.get(row.file_label, 0) + 1
+        if lap_counts and len(lap_counts) <= 4:
+            summary += " " + "  •  ".join(
+                "%s: %d lap(s)" % (file_label, lap_count)
+                for file_label, lap_count in lap_counts.items()
+            )
+
+        self.beacon_summary.setText(summary)
+        self.beacon_files_chip.setText("Files %d" % len(gps_pairs))
+        self.beacon_crossings_chip.setText("Beacons %d" % preview_crossings)
+        self.beacon_laps_chip.setText("Full Laps %d" % full_lap_count)
+        self._populate_beacon_table(preview_rows)
+
+    def _refresh_beacon_editor(self):
+        selected_items = self._selected_items()
+        gps_pairs, skipped = self._gps_traces_for_items(selected_items)
+        shared_line = self._shared_beacon_line(selected_items)
+        preview_rows = []
+        crossings_by_file = {}
+        if shared_line is not None and gps_pairs:
+            preview_rows, crossings_by_file = beacon_preview_rows(
+                [trace for _item, trace in gps_pairs],
+                shared_line,
+            )
+        self._render_beacon_preview(
+            selected_items,
+            gps_pairs,
+            skipped,
+            shared_line,
+            preview_rows,
+            crossings_by_file,
+        )
+
+    def _apply_beacon_line_to_selected(self, geo_line):
+        selected_items = self._selected_items()
+        gps_pairs, skipped = self._gps_traces_for_items(selected_items)
+        if not gps_pairs:
+            self._render_beacon_preview(selected_items, gps_pairs, skipped, None, [], {})
+            return
+
+        preview_rows, crossings_by_file = beacon_preview_rows(
+            [trace for _item, trace in gps_pairs],
+            geo_line,
+        )
+
+        for item, trace in gps_pairs:
+            item.settings.beacon_line = geo_line
+            item.settings.beacon_markers = [crossing.time for crossing in crossings_by_file.get(trace.name, [])]
+
+        self._render_beacon_preview(
+            selected_items,
+            gps_pairs,
+            skipped,
+            geo_line,
+            preview_rows,
+            crossings_by_file,
+        )
+        applied_files = len(gps_pairs)
+        applied_beacons = sum(len(item.settings.beacon_markers) for item, _trace in gps_pairs)
+        self.progress_summary.setText(
+            "Applied %d beacon(s) across %d selected file(s)." % (applied_beacons, applied_files)
+        )
+
+    def _clear_selected_beacons(self):
+        selected_items = self._selected_items()
+        if not selected_items:
+            return
+        self._push_undo_state()
+        for item in selected_items:
+            item.settings.beacon_markers = []
+            item.settings.beacon_line = None
+        self._refresh_beacon_editor()
+        self.progress_summary.setText("Cleared saved beacons from %d selected file(s)." % len(selected_items))
+
+    def _on_beacon_line_drawn(self, start_x, start_y, end_x, end_y):
+        selected_items = self._selected_items()
+        gps_pairs, skipped = self._gps_traces_for_items(selected_items)
+        if not gps_pairs:
+            self._render_beacon_preview(selected_items, gps_pairs, skipped, None, [], {})
+            return
+
+        self._push_undo_state()
+        reference_latitude, reference_longitude = self._beacon_reference(gps_pairs)
+        start_latitude, start_longitude = xy_to_lat_lon(
+            start_x,
+            start_y,
+            reference_latitude,
+            reference_longitude,
+        )
+        end_latitude, end_longitude = xy_to_lat_lon(
+            end_x,
+            end_y,
+            reference_latitude,
+            reference_longitude,
+        )
+        self._apply_beacon_line_to_selected(
+            (start_latitude, start_longitude, end_latitude, end_longitude)
+        )
+
     def _on_queue_selection_changed(self):
         selected_items = self._selected_items()
         self.metadata_dirty_fields.clear()
@@ -1596,6 +2252,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             self._populate_metadata_editor([])
             self.plot_widget.clear_preview("Select one file to preview.", "Preview is hidden until one file is selected.")
             self._set_editor_enabled(False, single_preview=False)
+            self._refresh_beacon_editor()
             return
 
         self._populate_metadata_editor(selected_items)
@@ -1611,6 +2268,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
                 "Preview is hidden while you batch-edit metadata.",
             )
             self._set_editor_enabled(True, single_preview=False)
+            self._refresh_beacon_editor()
             return
 
         item = selected_items[0]
@@ -1619,6 +2277,7 @@ class MotecQtWindow(QtWidgets.QMainWindow):
         self.preview_note_chip.setText("Single-file preview mode")
         self._set_editor_enabled(True, single_preview=True)
         self._load_preview_for_item(item, show_placeholder=True)
+        self._refresh_beacon_editor()
 
     def _selected_segment_descriptor(self):
         row = self.segment_table.currentRow()
@@ -1884,6 +2543,11 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             segment_log = item.preview_log.extract_segment(start_time, end_time, rebase_time=True)
             segment_settings = item.settings.copy()
             segment_settings.segment_ranges = [(segment_log.start(), segment_log.end())]
+            segment_settings.beacon_markers = [
+                beacon_time - start_time
+                for beacon_time in item.settings.beacon_markers
+                if start_time <= beacon_time <= end_time
+            ]
             output_stem = "%s_part%d" % ((item.output_stem or Path(item.path).stem), segment_number)
             display_base = Path(item.name).stem if "." in item.name else item.name
             display_name = "%s %d" % (display_base, segment_number) if len(segment_ranges) > 1 else "%s Trim" % display_base
