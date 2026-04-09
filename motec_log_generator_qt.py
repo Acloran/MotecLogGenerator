@@ -1190,6 +1190,23 @@ class MotecQtWindow(QtWidgets.QMainWindow):
             QStackedWidget {
                 background: transparent;
             }
+            QTabBar {
+                background: transparent;
+            }
+            QTabBar::tab-bar {
+                background: transparent;
+                left: 0px;
+            }
+            QTabBar::scroller {
+                background: transparent;
+            }
+            QTabBar::tear {
+                background: transparent;
+                border: none;
+            }
+            QTabBar::close-button {
+                background: transparent;
+            }
             QTabBar::tab {
                 background: #161f2b;
                 color: #94a7bd;
